@@ -119,7 +119,7 @@ python faceit_live.py webcam me_to_oliver
 
 If you prefer, you can still convert an existing video that is stored on disk, e.g.:
 ```
-python faceit_live.py convert ale_to_oliver myvideo1.webm --start 10 --duration 20 --side-by-side
+python faceit_live.py convert me_to_oliver myvideo1.webm --start 10 --duration 20 --side-by-side
 ```
 
 
