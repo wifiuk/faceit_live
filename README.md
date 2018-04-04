@@ -19,7 +19,7 @@ You will need the following to make it work:
     Webcam working at /dev/video0
 
 ## Setup Host System
-To use the fake webcam feature to enter conferences with our stream we need to insert the **v4l2loopback** kernel module. Follow the install instructions at  (https://github.com/umlaeute/v4l2loopback), then let's setup our fake webcam:
+To use the fake webcam feature to enter conferences with our stream we need to insert the **v4l2loopback** kernel module. Let's setup our fake webcam:
 
 ```
 $ git clone https://github.com/umlaeute/v4l2loopback.git
@@ -28,11 +28,6 @@ $ sudo depmod -a
 $ sudo modprobe v4l2loopback video_nr=1
 $ v4l2-ctl -d /dev/video1 -c timeout=3000
 ```
-
-Via PPA “Oficial”
-sudo add-apt-repository ppa:webcamstudio/webcamstudio-dailybuilds
-sudo apt-get update
-sudo apt-get instal webcamstudio
 
 This will create a new stream at */dev/video1*
 

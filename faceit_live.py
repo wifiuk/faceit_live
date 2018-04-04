@@ -10,10 +10,15 @@ from moviepy.video.io.VideoFileClip import VideoFileClip
 from moviepy.video.io.ImageSequenceClip import ImageSequenceClip
 from moviepy.video.fx.all import crop
 from moviepy.editor import AudioFileClip, clips_array, TextClip, CompositeVideoClip
+
+from PIL import Image
+import face_recognition
+import pyfakewebcam
+
 import shutil
 from pathlib import Path
 import sys
-sys.path.append('faceswap')
+sys.path.insert(0,'faceswap')
 
 from lib.utils import FullHelpArgumentParser
 from scripts.extract import ExtractTrainingData
@@ -113,8 +118,10 @@ class FaceIt:
             'outtmpl': os.path.join(FaceIt.VIDEO_PATH, video['name']),
             'merge_output_format' : 'mp4'
         }
+        # only download videos that are from youtube, otherwise they should be in data/videos
         with youtube_dl.YoutubeDL(options) as ydl:
-            x = ydl.download([video['url']])
+            if (str(video['url']).startswith('https://www.youtube.com/watch?v')):
+                x = ydl.download([video['url']])
 
     def _extract_frames(self, person, video):
         video_frames_dir = self._video_frames_path(video)
@@ -193,7 +200,7 @@ class FaceIt:
 
         self._faceswap.train(self._model_person_data_path(self._person_a), self._model_person_data_path(self._person_b), self._model_path(use_gan), use_gan)
 
-    def convert(self, video_file, swap_model = False, duration = None, start_time = None, use_gan = False, face_filter = False, photos = True, crop_x = None, width = None, side_by_side = False):
+    def convert(self, video_file, swap_model = False, duration = None, start_time = None, use_gan = False, face_filter = False, photos = True, crop_x = None, width = None, side_by_side = False, live=False, webcam=False):
         # Magic incantation to not have tensorflow blow up with an out of memory error.
         import tensorflow as tf
         import keras.backend.tensorflow_backend as K
@@ -236,12 +243,66 @@ class FaceIt:
             for face in detect_faces(frame, "cnn"):
                 if (not face_filter) or (face_filter and filter.check(face)):
                     frame = converter.patch_image(frame, face)
-                    frame = frame.astype(numpy.float32)
+                    if (not live and not webcam):
+                        frame = frame.astype(numpy.float32)
             if convert_colors:                    
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB) # Swap RGB to BGR to work with OpenCV
             return frame
         def _convert_helper(get_frame, t):
             return _convert_frame(get_frame(t))
+
+        if (live):
+            # generate dummy content for testing /dev/video1
+            #ffmpeg -f x11grab -s 640x480 -i :0.0+10,20 -vf format=pix_fmts=yuv420p -f v4l2 /dev/video1
+            print("Staring live mode. Capturing video from webcam!")
+            print("Press q to Quit")
+            # connect to webcam
+            video_capture = cv2.VideoCapture(0)
+            time.sleep(1)
+
+            width = video_capture.get(3)  # float
+            height = video_capture.get(4) # float
+            print("webcam dimensions = {} x {}".format(width,height))
+            
+            #video_capture = cv2.VideoCapture('./data/videos/ale.mp4')
+            if (webcam):
+                # create fake webcam device
+                camera = pyfakewebcam.FakeWebcam('/dev/video1', 640, 480)
+                camera.print_capabilities()
+                print("Fake webcam created, try using appear.in on Firefox or  ")
+          
+            # loop until user clicks 'q' to exit
+            while True:
+                ret, frame = video_capture.read()
+                frame = cv2.resize(frame, (640, 480))
+                # flip image, because webcam inverts it and we trained the model the other way! 
+                frame = cv2.flip(frame,1)
+                image = _convert_frame(frame, convert_colors = False)
+                # flip it back
+                image = cv2.flip(image,1)
+
+                
+                if (webcam):
+                    time.sleep(1/30.0)
+                    # firefox needs RGB 
+                    # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB) 
+                    # chrome and skype UYUV - not working at the moment
+                    # image = cv2.cvtColor(image, cv2.COLOR_BGR2YUV)
+                    
+                    camera.schedule_frame(image)
+                    #print("writing to stream")
+
+                else:
+                    cv2.imshow('Video', image)
+                    #print("writing to screen")
+                    
+                # Hit 'q' on the keyboard to quit!
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    video_capture.release()
+                    break
+
+            cv2.destroyAllWindows()
+            exit()
 
         media_path = self._video_path({ 'name' : video_file })
         if not photos:
@@ -281,6 +342,8 @@ class FaceIt:
             #final_video = final_video.resize(width = (480 * 2))
 
             # Write video
+            if not os.path.exists(os.path.join(self.OUTPUT_PATH)):
+                os.makedirs(self.OUTPUT_PATH)
             output_path = os.path.join(self.OUTPUT_PATH, video_file)
             final_video.write_videofile(output_path, rewrite_audio = True)
             
@@ -314,7 +377,7 @@ class FaceSwapInterface:
             model_type = "GAN"
         train = TrainingProcessor(
             self._subparser, "train", "This command trains the model for the two faces A and B.")
-        args_str = "train --input-A {} --input-B {} --model-dir {} --trainer {} --batch-size {} --write-image"
+        args_str = "train --input-A {} --input-B {} --model-dir {} --trainer {} --batch-size {} --write-image -p"
         args_str = args_str.format(input_a_dir, input_b_dir, model_dir, model_type, 512)
         self._run_script(args_str)
 
@@ -324,25 +387,24 @@ class FaceSwapInterface:
 
 
 if __name__ == '__main__':
-    faceit = FaceIt('fallon_to_oliver', 'fallon', 'oliver')
+    faceit = FaceIt('ale_to_oliver', 'ale', 'oliver')
+
+    faceit.add_video('ale', 'aleweb.webm')
+    faceit.add_video('ale', 'ale.mp4')
+    faceit.add_video('ale', 'myvideo2.webm')
+    faceit.add_video('ale', 'aleweb2.webm')
+
     faceit.add_video('oliver', 'oliver_trumpcard.mp4', 'https://www.youtube.com/watch?v=JlxQ3IUWT0I')
     faceit.add_video('oliver', 'oliver_taxreform.mp4', 'https://www.youtube.com/watch?v=g23w7WPSaU8')
     faceit.add_video('oliver', 'oliver_zazu.mp4', 'https://www.youtube.com/watch?v=Y0IUPwXSQqg')
     faceit.add_video('oliver', 'oliver_pastor.mp4', 'https://www.youtube.com/watch?v=mUndxpbufkg')
     faceit.add_video('oliver', 'oliver_cookie.mp4', 'https://www.youtube.com/watch?v=H916EVndP_A')
     faceit.add_video('oliver', 'oliver_lorelai.mp4', 'https://www.youtube.com/watch?v=G1xP2f1_1Jg')
-    faceit.add_video('fallon', 'fallon_mom.mp4', 'https://www.youtube.com/watch?v=gjXrm2Q-te4')
-    faceit.add_video('fallon', 'fallon_charlottesville.mp4', 'https://www.youtube.com/watch?v=E9TJsw67OmE')
-    faceit.add_video('fallon', 'fallon_dakota.mp4', 'https://www.youtube.com/watch?v=tPtMP_NAMz0')
-    faceit.add_video('fallon', 'fallon_single.mp4', 'https://www.youtube.com/watch?v=xfFVuXN0FSI')
-    faceit.add_video('fallon', 'fallon_sesamestreet.mp4', 'https://www.youtube.com/watch?v=SHogg7pJI_M')
-    faceit.add_video('fallon', 'fallon_emmastone.mp4', 'https://www.youtube.com/watch?v=bLBSoC_2IY8')
-    faceit.add_video('fallon', 'fallon_xfinity.mp4', 'https://www.youtube.com/watch?v=7JwBBZRLgkM')
-    faceit.add_video('fallon', 'fallon_bank.mp4', 'https://www.youtube.com/watch?v=q-0hmYHWVgE')
-    FaceIt.add_model(faceit)
 
+
+    FaceIt.add_model(faceit)
     parser = argparse.ArgumentParser()
-    parser.add_argument('task', choices = ['preprocess', 'train', 'convert'])
+    parser.add_argument('task', choices = ['preprocess', 'train', 'convert','live','webcam'])
     parser.add_argument('model', choices = FaceIt.MODELS.keys())
     parser.add_argument('video', nargs = '?')
     parser.add_argument('--duration', type = int, default = None)
@@ -366,5 +428,7 @@ if __name__ == '__main__':
             print('Need a video to convert. Some ideas: {}'.format(", ".join([video['name'] for video in faceit.all_videos()])))
         else:
             faceit.convert(args.video, duration = args.duration, swap_model = args.swap_model, face_filter = args.face_filter, start_time = args.start_time, photos = args.photos, crop_x = args.crop_x, width = args.width, side_by_side = args.side_by_side)
-
-
+    elif args.task == 'live':
+            faceit.convert(args.video, duration = args.duration, swap_model = args.swap_model, face_filter = args.face_filter, start_time = args.start_time, photos = args.photos, crop_x = args.crop_x, width = args.width, side_by_side = args.side_by_side, live = True, webcam = False)
+    elif args.task == 'webcam':
+            faceit.convert(args.video, duration = args.duration, swap_model = args.swap_model, face_filter = args.face_filter, start_time = args.start_time, photos = args.photos, crop_x = args.crop_x, width = args.width, side_by_side = args.side_by_side, live = True, webcam = True)

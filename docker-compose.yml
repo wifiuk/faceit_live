@@ -1,0 +1,6 @@
+version: '2'
+
+services:
+  faceit_live:
+    build: .
+    image: faceit_live:latest
