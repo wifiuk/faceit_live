@@ -1,32 +1,95 @@
-# FaceIt
+# FaceIt Live
 
-![Jimmy Fallon's body with John Olivery's head, oh my.](example.jpg)
+FaceIT Live will swap your face in realtime to someone else's. For laughs you can enter a conference with this modified video stream.
 
-A script to make it easy to swap faces in videos using the [deepfakes/faceswap](https://github.com/deepfakes/faceswap) library, and urls of YouTube videos for training data. The image above shows a face swap from Jimmy Fallon (host of The Tonight Show) to John Oliver (host of Last Week Tonight).
+![Joing a video conference call as John Oliver or another celebrity is great fun](deep_live.gif)
 
-## Overview
 
-I wrote this script to help me explore the capabilities and limitations of the video face swapping technology known as [Deepfakes](https://github.com/deepfakes/faceswap).
+This code is based on the library [deepfakes/faceswap](https://github.com/deepfakes/faceswap) and the work done by Gaurav Oberoi on the [FaceIt](https://github.com/goberoi/faceit) library that makes it easy to extract frames for training directly from YouTube.
 
-**[Read all about it in this detailed blog post.](https://goberoi.com/exploring-deepfakes-20c9947c22d9)**
+# Setup
 
-What does this script do? It makes it trivially easy to acquire and preprocess training data from YouTube. This greatly simplifies the work required to setup a new model, since often all you need to do is find 3-4 videos of each person to get decent results.
+## Requirements
+This has been tested on **Ubuntu 16.04 with a Titan X (Pascal) GPU**.
+You will need the following to make it work:
 
-## Installation
+    Linux host OS
+    NVidia fast GPU (GTX 1080, GTX 1080i, Titan, etc ...)
+    Fast Desktop CPU (Quad Core or more)
+    NVidia CUDA 9 and cuDNN 7 libraries installed
+    Docker installed
+    Webcam working at /dev/video0
 
-There is a requirements.txt file in the repo, but to make it all work, you'll need CUDA libraries installed, and ideally Dlib compiled with CUDA support.
+## Setup Host System
+To use the fake webcam feature to enter conferences with our stream we need to insert the **v4l2loopback** kernel module. Follow the install instructions at  (https://github.com/umlaeute/v4l2loopback), then let's setup our fake webcam:
 
-## Usage
+```
+$ git clone https://github.com/umlaeute/v4l2loopback.git
+$ make && sudo make install
+$ sudo depmod -a
+$ sudo modprobe v4l2loopback video_nr=1
+$ v4l2-ctl -d /dev/video1 -c timeout=3000
+```
 
-Setup your model and training data in code, e.g.:
+Via PPA “Oficial”
+sudo add-apt-repository ppa:webcamstudio/webcamstudio-dailybuilds
+sudo apt-get update
+sudo apt-get instal webcamstudio
+
+This will create a new stream at */dev/video1*
+
+## Clone this repository
+Don't forget to use the *--recurse-submodules* parameter to checkout all dependencies.
+
+    $ git clone --recurse-submodules https://github.com/alew3/faceit_live.git /local_path/
+
+## Setup Docker
+To make it easy to install all depencies a Dockerfile has been provided. After [installing Docker](https://docs.docker.com/install/).  Go to the project directory and:
+    
+    $ cd /local_path/faceit_live
+    $ xhost local:root # this is necessary for your docker to access the host interface
+    $ docker-compose build
+    $ chmod +x ./run_docker.sh
+
+To run the docker use the provided shell script that runs the Docker and makes the webcam and XTerminal available in the container.
+
+    $ ./run_docker.sh
+
+# Usage
+
+
+Then create the directory `./data/persons` and put one image containing the face of person A and another of person B. Use the same name that you did when setting up the model. This file is used to filter their face from any others in the videos you provide. E.g.:
+```
+./data/persons/me.jpg
+./data/persons/oliver.jpg
+```
+
+# Capture a video sample of you from your webcam
+
+You can use **Cheese** or another program to capture a video from your webcam and use that for training. This is the better than using a mobile phone you will be in your real world environment that will be later used for conversion.
+
+    $ sudo apt-get install cheese
+    $ cheese
+
+
+You will need at least 512 images for training, so do a few videos from yourself moving your head around and making different expressions. Afterwards put them in the folder ./data/videos/:
+
+    e.g.
+    ./data/videos/myvideo1.webm
+    ./data/videos/myvideo2.webm
+
+
+For the training videos from the second person you may either use videos from Youtube or put them directly into the same **./data/videos** folder. 
+
+Setup your model and training data in code on the file **faceit_live.py**, e.g.:
 ```python
 # Create the model with params: model name, person A name, person B name.
-faceit = FaceIt('fallon_to_oliver', 'fallon', 'oliver')
+faceit = FaceIt('me_to_oliver', 'me', 'oliver')
 
-# Add any number of videos for person A by specifying the YouTube url of the video.
-faceit.add_video('fallon', 'fallon_emmastone.mp4', 'https://www.youtube.com/watch?v=bLBSoC_2IY8')
-faceit.add_video('fallon', 'fallon_single.mp4', 'https://www.youtube.com/watch?v=xfFVuXN0FSI')
-faceit.add_video('fallon', 'fallon_sesamestreet.mp4', 'https://www.youtube.com/watch?v=SHogg7pJI_M')
+# Add your videos from  YouTube url or filename of the video (in folder /data/videos).
+faceit.add_video('me', 'myvideo1.webm')
+faceit.add_video('me', 'myvideo2.webm')
+faceit.add_video('me', 'me_from_youtube.mp4', 'youtube url here')
 
 # Do the same for person B.
 faceit.add_video('oliver', 'oliver_trumpcard.mp4', 'https://www.youtube.com/watch?v=JlxQ3IUWT0I')
@@ -34,38 +97,38 @@ faceit.add_video('oliver', 'oliver_taxreform.mp4', 'https://www.youtube.com/watc
 faceit.add_video('oliver', 'oliver_zazu.mp4', 'https://www.youtube.com/watch?v=Y0IUPwXSQqg')
 ```
 
-Then create the directory `./data/persons` and put one image containing the face of person A and another of person B. Use the same name that you did when setting up the model. This file is used to filter their face from any others in the videos you provide. E.g.:
+Now let's startup our docker container and run our code:
 ```
-./data/persons/fallon.jpg
-./data/persons/oliver.jpg
+$ ./run_docker.sh
 ```
 
-Then, preprocess the data. This downloads the videos, breaks them into frames, and extracts the relevant faces, e.g.:
+
+Then, preprocess the data. This downloads the videos, breaks them into frames, and extracts the relevant faces. After running the script, go to ./data/processed/ to make sure it didn't extract a different persons images into your training data. If it did, just delete them.
 ```
-python faceit.py preprocess fallon_to_oliver
+python faceit_live.py preprocess me_to_oliver
 ```
 
 Then train the model, e.g.:
 ```
-python faceit.py train fallon_to_oliver
+python faceit_live.py train me_to_oliver
 ```
 
-Finally, convert any video that is stored on disk, e.g.:
+To see how well it is working use:
 ```
-python faceit.py convert fallon_to_oliver fallon_emmastone.mp4 --start 40 --duration 55 --side-by-side
+python faceit_live.py live me_to_oliver
 ```
 
-Note that you can get useful usage information just by running: `python faceit.py -h`
+To create a fake webcam stream use the following and select "Dummy" as your webcam source with Skype or other videoconferencing software (your mileage may vary), make sure to use a different audio source or people won't hear you.
+```
+python faceit_live.py webcam me_to_oliver
+```
 
 
-## License
+If you prefer, you can still convert an existing video that is stored on disk, e.g.:
+```
+python faceit_live.py convert ale_to_oliver myvideo1.webm --start 10 --duration 20 --side-by-side
+```
 
-*This script is shared under the MIT license, but the library it depends on currently has no license. Beware!*
 
-Copyright 2018 Gaurav Oberoi (goberoi@gmail.com)
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+## TODO
+- Check if there is a fix for Skype and Chrome not recognizing the webcam

@@ -11,9 +11,9 @@ numpy==1.14.0
 tqdm
 pydot
 graphviz
-
-
-# Required but installed using other means.
-#
-#opencv-python==3.4.0
-#tensorflow-gpu==1.5.0
+tensorflow-gpu==1.5.0
+scandir==1.6
+dictionary
+tqdm
+pyfakewebcam
+opencv-python==3.4.0.12
