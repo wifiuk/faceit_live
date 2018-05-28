@@ -177,7 +177,7 @@ To see how well it is working use:
 python faceit_live.py live me_to_oliver
 ```
 
-To create a fake webcam stream use the following and select "Dummy" as your webcam source with Skype or other videoconferencing software (your mileage may vary), make sure to use a different audio source or people won't hear you.
+# Let's join a video conference!
 To create a fake webcam stream use the following and select "Dummy" as your webcam source with Firefox and a WebRTC videoconferencing site such as http://www.appear.in/ , make sure to use a select a separate audio source or people won't hear you.
 ```
 python faceit_live.py webcam me_to_oliver
