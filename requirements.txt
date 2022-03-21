@@ -11,7 +11,7 @@ numpy==1.14.0
 tqdm
 pydot
 graphviz
-tensorflow-gpu==1.5.0
+tensorflow-gpu==2.5.3
 scandir==1.6
 dictionary
 tqdm
